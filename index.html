@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Offline Page — Viewforth</title>
+<style>
+:root{--bg:#f7f5ef;--card:#fff;--line:#e3ddcf;--ink:#23262d;--soft:#5b616c;--faint:#8a8f98;--blue:#1f4e79;--blue2:#2c6aa0;--green:#2f7d4f;--amber:#a86a00;--red:#b03a2e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%}
+.wrap{max-width:880px;margin:0 auto;padding:28px 20px 48px}
+header h1{font-size:24px;margin:0 0 4px;letter-spacing:-.01em}
+header p{margin:0;color:var(--soft)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-top:18px}
+.status{display:flex;gap:14px;align-items:flex-start}
+.dot{width:12px;height:12px;border-radius:50%;margin-top:7px;flex:0 0 12px;background:var(--faint)}
+.dot.ok{background:var(--green)}.dot.warn{background:var(--amber)}.dot.bad{background:var(--red)}
+.status-main{flex:1 1 0;min-width:0}
+.status-main .big{font-size:18px;font-weight:650;margin:0 0 2px}
+.status-main .sub{color:var(--soft);margin:0}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:16px}
+.fact{background:#faf8f3;border:1px solid #eee8db;border-radius:8px;padding:9px 12px;min-width:0}
+.fact b{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fact span{font-size:12.5px;color:var(--soft)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;align-items:center}
+button{font:inherit;font-weight:600;border-radius:8px;padding:10px 18px;cursor:pointer;border:1px solid transparent}
+button.primary{background:var(--blue);color:#fff}
+button.primary:hover{background:var(--blue2)}
+button.plain{background:#fff;color:var(--ink);border-color:#cfc8b8}
+button.plain:hover{background:#f3f0e8}
+button.danger{background:#fff;color:var(--red);border-color:#e2b7b2}
+button:disabled{opacity:.45;cursor:default}
+.progress{margin-top:16px;display:none}
+.bar{height:10px;background:#ece7db;border-radius:6px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--blue2);transition:width .25s}
+.ptext{margin-top:7px;color:var(--soft);font-size:13.5px;overflow-wrap:anywhere}
+.switch{display:flex;gap:12px;align-items:flex-start;margin-top:4px}
+.switch input{width:20px;height:20px;margin:2px 0 0;flex:0 0 20px;accent-color:var(--blue)}
+.switch label{font-weight:600}
+.switch p{margin:2px 0 0;color:var(--soft);font-size:13.5px}
+.banner{display:none;margin-top:14px;background:#fff6e0;border:1px solid #f0d58f;color:#6b4a00;border-radius:8px;padding:9px 12px;font-size:14px}
+h2{font-size:16px;margin:0 0 12px}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+col.c-num{width:72px}col.c-size{width:84px}
+th,td{text-align:left;padding:10px 8px;border-top:1px solid #efe9dd;vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);font-weight:600;border-top:0;padding-top:0}
+td.num,th.num{text-align:right;white-space:nowrap}
+td .name{font-weight:650}
+td .what{color:var(--soft);font-size:13px;margin-top:2px}
+td .links{margin-top:5px;font-size:13.5px;display:flex;flex-wrap:wrap;gap:4px 16px}
+td .links a{color:var(--blue2);text-decoration:none;white-space:nowrap}
+td .links a:hover{text-decoration:underline}
+ul.how{margin:0;padding-left:20px}
+ul.how li{margin:5px 0}
+.small{font-size:13px;color:var(--soft)}
+.log{margin-top:10px;font-size:13px;color:var(--soft);overflow-wrap:anywhere}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+@media (max-width:560px){.wrap{padding:18px 14px 36px}.card{padding:16px}th.hide,td.hide,col.hide{display:none}col.c-num{width:56px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Offline Page</h1>
+    <p>Saves the Master Dashboard, the Position Management System, the memos and the Industry and Sector Share Price Drivers Report on this device, so you can read them without internet.</p>
+  </header>
+
+  <section class="card" aria-live="polite">
+    <div class="status">
+      <div class="dot" id="dot"></div>
+      <div class="status-main">
+        <p class="big" id="headline">Checking this device…</p>
+        <p class="sub" id="subline"></p>
+      </div>
+    </div>
+    <div class="facts">
+      <div class="fact"><b id="f-files">–</b><span>files saved</span></div>
+      <div class="fact"><b id="f-size">–</b><span>saved on this device</span></div>
+      <div class="fact"><b id="f-space">–</b><span>space this browser may use</span></div>
+      <div class="fact"><b id="f-helper">–</b><span>offline helper</span></div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="go">Save for offline</button>
+      <button class="plain" id="stop" style="display:none">Stop</button>
+    </div>
+    <div class="progress" id="progress">
+      <div class="bar"><i id="barfill"></i></div>
+      <div class="ptext" id="ptext"></div>
+    </div>
+    <div class="log" id="log"></div>
+  </section>
+
+  <section class="card">
+    <h2>What is saved</h2>
+    <table>
+      <colgroup><col><col class="c-num"><col class="c-size hide"></colgroup>
+      <thead><tr><th>Section</th><th class="num">Files</th><th class="num hide">Size</th></tr></thead>
+      <tbody id="groups"></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <div class="switch">
+      <input type="checkbox" id="preview">
+      <div>
+        <label for="preview">Browse as if offline</label>
+        <p>For 30 minutes, every page on these sites comes only from the saved copy, so you can check what you will see without internet. It switches itself off; untick it to stop sooner.</p>
+      </div>
+    </div>
+    <div class="banner" id="pbanner"></div>
+  </section>
+
+  <section class="card">
+    <h2>How to use it</h2>
+    <ul class="how">
+      <li><b>Before you go offline:</b> open this page on Wi-Fi. It updates by itself when the saved copy is more than a day old; leave the page open until it says it is up to date.</li>
+      <li><b>When offline:</b> open your usual bookmarks or the links above. Pages you have not saved show a short note with a link back here.</li>
+      <li><b>On the iPad:</b> use ordinary Safari or Chrome tabs, not a Home Screen icon, and open this page at least once a week, or the iPad may clear the saved copy.</li>
+      <li><b>Research reports</b> are not saved in bulk; any page you open online is kept for offline reading as well.</li>
+    </ul>
+  </section>
+
+  <section class="card foot">
+    <span class="small" id="ver"></span>
+    <button class="danger" id="wipe">Remove the saved copy from this device</button>
+  </section>
+</div>
+
+<script>
+"use strict";
+const CACHE = "vf-offline-v1", STATE_KEY = "/__offline__/state.json", MODE_KEY = "/__offline__/mode.json";
+const API = "https://api.github.com/repos/vfhqi/";
+const BYPASS = { "x-vf-offline-fetch": "1" };
+const PARALLEL = 6, AUTO_HOURS = 20, PREVIEW_MIN = 30;
+const ORIGIN = location.origin;
+const $ = id => document.getElementById(id);
+let LIST = null, STATE = null, running = false, stopAsked = false, HELPER_VERSION = null;
+function showVersion() { $("ver").textContent = "Offline helper version " + (HELPER_VERSION || "–") + " · list of what is saved: version " + (LIST ? LIST.version : "–"); }
+
+/* ---------- small helpers ---------- */
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function when(iso) { const d = new Date(iso); return d.getDate() + "-" + MON[d.getMonth()] + "-" + d.getFullYear() + " " + String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0"); }
+function ago(iso) {
+  const h = (Date.now() - new Date(iso)) / 36e5, n = (v, w) => v + " " + w + (v === 1 ? "" : "s") + " ago";
+  if (h < 1) return n(Math.max(1, Math.round(h * 60)), "minute");
+  if (h < 48) return n(Math.round(h), "hour");
+  return n(Math.round(h / 24), "day");
+}
+function mb(n) { if (n == null) return "–"; if (n >= 1e9) return (n/1e9).toFixed(2) + " GB"; if (n < 1e6) return Math.max(1, Math.round(n/1e3)) + " KB"; return Math.round(n/1e6).toLocaleString("en-GB") + " MB"; }
+function num(n) { return n.toLocaleString("en-GB"); }
+function typeOf(p) {
+  const x = (p.split(".").pop() || "").toLowerCase();
+  return ({html:"text/html; charset=utf-8",htm:"text/html; charset=utf-8",js:"text/javascript; charset=utf-8",json:"application/json; charset=utf-8",css:"text/css; charset=utf-8",svg:"image/svg+xml",png:"image/png",jpg:"image/jpeg",jpeg:"image/jpeg",gif:"image/gif",webp:"image/webp",woff2:"font/woff2",woff:"font/woff",ttf:"font/ttf",txt:"text/plain; charset=utf-8",csv:"text/csv; charset=utf-8",pdf:"application/pdf",ico:"image/x-icon"})[x] || "application/octet-stream";
+}
+async function gitSha(buf) {
+  const head = new TextEncoder().encode("blob " + buf.byteLength + "\0");
+  const all = new Uint8Array(head.length + buf.byteLength);
+  all.set(head); all.set(new Uint8Array(buf), head.length);
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-1", all));
+  return Array.from(d, b => b.toString(16).padStart(2, "0")).join("");
+}
+async function cache() { return caches.open(CACHE); }
+async function loadState() {
+  try { const r = await (await cache()).match(ORIGIN + STATE_KEY); if (r) return await r.json(); } catch (e) {}
+  return { files: {}, updated: null, last: null };
+}
+async function saveState() {
+  await (await cache()).put(ORIGIN + STATE_KEY, new Response(JSON.stringify(STATE), { headers: { "content-type": "application/json" } }));
+}
+
+/* ---------- what should be saved ---------- */
+async function getList() {
+  const r = await fetch("/offline-list.json", { cache: "no-store", headers: BYPASS }).catch(() => null);
+  if (r && r.ok) return r.json();
+  const saved = await (await cache()).match(ORIGIN + "/offline-list.json");   // offline: the saved list
+  return saved ? saved.json() : null;
+}
+async function plan() {
+  const trees = {}, problems = [];
+  const want = new Map();          // path -> {sha,size,group}
+  const prefetched = new Map();    // path -> {buf,type}
+  const skip = new RegExp(LIST.skip_files);
+  for (const src of LIST.sources) {
+    if (!(src.repo in trees)) {
+      const r = await fetch(API + src.repo + "/git/trees/HEAD?recursive=1", { cache: "no-store" });
+      if (r.status === 403 || r.status === 429) throw new Error("GitHub is limiting how often its file lists can be read from this network (60 an hour). Try again in an hour.");
+      if (!r.ok) { trees[src.repo] = null; problems.push(src.repo + " (HTTP " + r.status + ")"); continue; }
+      const j = await r.json();
+      if (j.truncated) problems.push(src.repo + " (file list cut short by GitHub)");
+      trees[src.repo] = new Map((j.tree || []).filter(e => e.type === "blob").map(e => [e.path, e]));
+    }
+    const tree = trees[src.repo];
+    if (!tree) continue;
+    const add = (p, e) => { if (!skip.test(p)) want.set(src.base + p, { sha: e.sha, size: e.size, group: src.group }); };
+    for (const [p, e] of tree) {
+      if (!(src.include || []).some(pre => p === pre || p.startsWith(pre))) continue;
+      if ((src.exclude || []).some(pre => p.startsWith(pre))) continue;
+      add(p, e);
+    }
+    if (src.linked) {                // the files a page links to, e.g. the Repository's current memos
+      const lp = src.base + src.linked.page;
+      const got = await download(lp).catch(() => null);
+      if (!got) { problems.push(lp + " (could not be read)"); continue; }
+      prefetched.set(lp, got);
+      const text = new TextDecoder().decode(got.buf).replace(/&amp;/g, "&");
+      const sk = new RegExp(src.linked.skip);
+      const seen = new Set();
+      for (const m of text.matchAll(/[A-Za-z0-9_.&\-]+\/[A-Za-z0-9_.&\-]+\.html/g)) {
+        const p = src.linked.folder + m[0];
+        if (seen.has(p)) continue; seen.add(p);
+        const e = tree.get(p);
+        if (e && !sk.test("/" + p)) add(p, e);
+      }
+    }
+  }
+  return { want, prefetched, problems };
+}
+
+/* ---------- saving ---------- */
+async function download(path) {
+  const r = await fetch(path, { cache: "no-store", headers: BYPASS });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return { buf: await r.arrayBuffer(), type: r.headers.get("content-type") || typeOf(path) };
+}
+function show(state) {
+  $("progress").style.display = state ? "block" : "none";
+  if (!state) return;
+  const pct = state.total ? Math.min(100, 100 * state.done / state.total) : 0;
+  $("barfill").style.width = pct.toFixed(1) + "%";
+  $("ptext").textContent = state.text;
+}
+async function run(auto) {
+  if (running) return;
+  running = true; stopAsked = false;
+  $("go").disabled = true; $("wipe").disabled = true; $("preview").disabled = true; $("stop").style.display = ""; $("log").textContent = "";
+  const t0 = Date.now();
+  show({ total: 0, done: 0, text: "Reading the list of files on each site…" });
+  setHead("warn", auto ? "Updating the saved copy (it was more than a day old)…" : "Updating the saved copy…", "Keep this page open until it finishes.");
+  let res = { checked: 0, fetched: 0, bytes: 0, failed: [], pending: [], removed: 0, problems: [] };
+  try {
+    LIST = await getList();
+    if (!LIST) throw new Error("The list of what to save could not be read.");
+    const { want, prefetched, problems } = await plan();
+    res.problems = problems;
+    const c = await cache();
+    const jobs = [];
+    for (const [path, w] of want) {
+      res.checked++;
+      const have = STATE.files[path];
+      if (have && have.sha === w.sha && await c.match(ORIGIN + path)) { have.group = w.group; continue; }
+      jobs.push([path, w]);
+    }
+    const total = jobs.length, totalBytes = jobs.reduce((a, j) => a + (j[1].size || 0), 0);
+    let done = 0, sinceSave = 0, i = 0;
+    const tick = () => show({ total, done, text: num(done) + " of " + num(total) + " files to update · " + mb(res.bytes) + " of about " + mb(totalBytes) });
+    tick();
+    const worker = async () => {
+      while (i < jobs.length && !stopAsked) {
+        const [path, w] = jobs[i++];
+        try {
+          const got = prefetched.get(path) || await download(path);
+          const sha = await gitSha(got.buf);
+          await c.put(ORIGIN + path, new Response(got.buf, { headers: { "content-type": got.type, "x-vf-saved": new Date().toISOString() } }));
+          // a mismatch means the website was still publishing a newer or older copy: keep it, try again next time
+          STATE.files[path] = { sha: sha === w.sha ? w.sha : "retry", size: got.buf.byteLength, group: w.group };
+          if (sha !== w.sha) res.pending.push(path);
+          res.fetched++; res.bytes += got.buf.byteLength;
+        } catch (e) {
+          res.failed.push(path + " (" + e.message + ")");
+        }
+        done++;
+        if (++sinceSave >= 60) { sinceSave = 0; await saveState(); }
+        tick();
+      }
+    };
+    await Promise.all(Array.from({ length: PARALLEL }, worker));
+    if (!stopAsked) {               // files no longer on the list
+      for (const path of Object.keys(STATE.files)) {
+        if (!want.has(path)) { await c.delete(ORIGIN + path); delete STATE.files[path]; res.removed++; }
+      }
+    }
+    const complete = !stopAsked && !res.failed.length;
+    if (complete) STATE.updated = new Date().toISOString();
+    STATE.last = { at: new Date().toISOString(), seconds: Math.round((Date.now() - t0) / 1000), checked: res.checked, fetched: res.fetched,
+                   bytes: res.bytes, failed: res.failed.length, pending: res.pending.length, removed: res.removed, stopped: stopAsked, problems: res.problems };
+    await saveState();
+    if (navigator.storage && navigator.storage.persist) { try { await navigator.storage.persist(); } catch (e) {} }
+  } catch (e) {
+    res.error = e.message;
+  }
+  running = false;
+  $("go").disabled = false; $("wipe").disabled = false; $("preview").disabled = false; $("stop").style.display = "none"; show(null);
+  await refresh();
+  const L = [];
+  if (res.error) L.push("The update did not finish: " + res.error);
+  if (res.failed.length) L.push(num(res.failed.length) + (res.failed.length === 1 ? " file" : " files") + " could not be saved this time, for example " + res.failed.slice(0, 2).join("; ") + ". The next update tries them again.");
+  if (res.pending.length) L.push(num(res.pending.length) + (res.pending.length === 1 ? " file was" : " files were") + " being re-published on the website while saving; " + (res.pending.length === 1 ? "it is" : "they are") + " saved and will be checked again next time.");
+  if (res.problems.length) L.push("Could not read: " + res.problems.join("; ") + ".");
+  $("log").textContent = L.join(" ");
+}
+
+/* ---------- page state ---------- */
+function setHead(kind, big, sub) {
+  $("dot").className = "dot " + (kind || "");
+  $("headline").textContent = big;
+  $("subline").textContent = sub || "";
+}
+async function refresh() {
+  STATE = await loadState();
+  const files = Object.values(STATE.files);
+  $("f-files").textContent = files.length ? num(files.length) : "None";
+  $("f-size").textContent = files.length ? mb(files.reduce((a, f) => a + (f.size || 0), 0)) : "–";
+  if (navigator.storage && navigator.storage.estimate) {
+    try { const est = await navigator.storage.estimate(); $("f-space").textContent = mb(est.quota); } catch (e) {}
+  }
+  const last = STATE.last;
+  if (!running) {
+    if (!STATE.updated && files.length) {
+      setHead("warn", "Partly saved: the first save did not finish.", "Tap “Finish saving” on Wi-Fi; it carries on from where it stopped.");
+      $("go").textContent = "Finish saving";
+    } else if (!STATE.updated) {
+      setHead("", "Nothing is saved on this device yet.", "Tap “Save for offline” on Wi-Fi. The first save is several hundred megabytes and takes a few minutes.");
+      $("go").textContent = "Save for offline";
+    } else {
+      const old = (Date.now() - new Date(STATE.updated)) / 36e5 > AUTO_HOURS;
+      const partial = last && (last.stopped || last.failed);
+      setHead(old || partial ? "warn" : "ok",
+        (old ? "Saved copy is out of date: updated " : "Saved copy is up to date: updated ") + when(STATE.updated) + " (" + ago(STATE.updated) + ")",
+        last ? "Last update: " + num(last.checked) + " files checked, " + num(last.fetched) + " downloaded (" + mb(last.bytes) + ")" +
+               (last.stopped ? ", stopped before the end" : "") + (last.failed ? ", " + num(last.failed) + " not saved" : "") + "." : "");
+      $("go").textContent = "Update now";
+    }
+  }
+  renderGroups();
+}
+function renderGroups() {
+  if (!LIST) return;
+  const by = {};
+  for (const f of Object.values(STATE.files)) { const g = by[f.group] || (by[f.group] = { n: 0, b: 0 }); g.n++; g.b += f.size || 0; }
+  $("groups").innerHTML = "";
+  for (const g of LIST.groups) {
+    if (g.hidden) continue;
+    const s = by[g.id] || { n: 0, b: 0 };
+    const tr = document.createElement("tr");
+    const links = [["Open", g.open]].concat(g.more || []).map(([t, h]) => '<a href="' + h + '" target="_blank" rel="noopener">' + t + "</a>").join("");
+    tr.innerHTML = '<td><div class="name"></div><div class="what"></div><div class="links">' + links + '</div></td><td class="num"></td><td class="num hide"></td>';
+    tr.querySelector(".name").textContent = g.name;
+    tr.querySelector(".what").textContent = g.what;
+    tr.children[1].textContent = s.n ? num(s.n) : "–";
+    tr.children[2].textContent = s.n ? mb(s.b) : "–";
+    $("groups").appendChild(tr);
+  }
+}
+
+/* ---------- browse as if offline ---------- */
+async function setPreview(on) {
+  const mode = { on, until: on ? Date.now() + PREVIEW_MIN * 60000 : 0 };
+  await (await cache()).put(ORIGIN + MODE_KEY, new Response(JSON.stringify(mode), { headers: { "content-type": "application/json" } }));
+  const reg = await navigator.serviceWorker.ready;
+  (navigator.serviceWorker.controller || reg.active).postMessage({ type: "mode", on: mode.on, until: mode.until });
+  showPreview(mode);
+}
+function showPreview(mode) {
+  const on = mode && mode.on && Date.now() < mode.until;
+  $("preview").checked = !!on;
+  $("pbanner").style.display = on ? "block" : "none";
+  if (on) $("pbanner").textContent = "Browsing as if offline until " + when(new Date(mode.until).toISOString()).split(" ")[1] + ". Open any link above to see the saved copy. Updates are paused meanwhile.";
+  $("go").disabled = !!on || running;
+}
+
+/* ---------- start ---------- */
+async function helperStatus() {
+  if (!("serviceWorker" in navigator) || !window.caches) { $("f-helper").textContent = "Not available"; return false; }
+  try {
+    await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    const reg = await navigator.serviceWorker.ready;
+    $("f-helper").textContent = "Active";
+    const ch = new MessageChannel();
+    ch.port1.onmessage = e => { HELPER_VERSION = e.data.version; showVersion(); };
+    reg.active.postMessage({ type: "version" }, [ch.port2]);
+    return true;
+  } catch (e) { $("f-helper").textContent = "Not running"; $("log").textContent = "The offline helper could not start: " + e.message; return false; }
+}
+(async function start() {
+  const ok = await helperStatus();
+  LIST = await getList().catch(() => null);
+  showVersion();
+  await refresh();
+  let mode = null;
+  try { const r = await (await cache()).match(ORIGIN + MODE_KEY); if (r) mode = await r.json(); } catch (e) {}
+  showPreview(mode);
+  $("go").onclick = () => run(false);
+  $("stop").onclick = () => { stopAsked = true; $("stop").disabled = true; setTimeout(() => $("stop").disabled = false, 1500); };
+  $("preview").onchange = e => setPreview(e.target.checked);
+  let armed = false;
+  $("wipe").onclick = async () => {
+    if (!armed) { armed = true; $("wipe").textContent = "Click again to remove everything saved"; setTimeout(() => { armed = false; $("wipe").textContent = "Remove the saved copy from this device"; }, 5000); return; }
+    stopAsked = true; await caches.delete(CACHE); armed = false;
+    $("wipe").textContent = "Remove the saved copy from this device"; $("log").textContent = "The saved copy was removed from this device.";
+    await refresh(); showPreview(null);
+  };
+  if (!ok) { $("go").disabled = true; return; }
+  const conn = navigator.connection || {};
+  const auto = STATE.updated && (Date.now() - new Date(STATE.updated)) / 36e5 > AUTO_HOURS
+               && navigator.onLine && !conn.saveData && conn.type !== "cellular" && !(mode && mode.on && Date.now() < mode.until);
+  if (auto) run(true);
+})();
+</script>
+</body>
+</html>

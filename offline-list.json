@@ -1,0 +1,23 @@
+{
+  "version": "2026-11-11.1",
+  "note": "What the Offline Page saves. Each source is one GitHub repository; 'include' lists file paths or folder prefixes inside it; 'exclude' removes prefixes; 'linked' adds the files a page links to inside a folder, minus 'skip'. Edit this file to change what is saved; no other change is needed.",
+  "skip_files": "\\.(py|md|sh|bat|ps1)$|\\.bak|/\\.|^\\.",
+  "groups": [
+    {"id": "md", "name": "Master Dashboard", "what": "The main page, every stock's Per‑stock Chart, the valuation charts and the Multi‑stock Dashboard", "open": "/master/"},
+    {"id": "pms", "name": "Position Management System", "what": "Portfolio overview, the Position Management System page, the APM PMS Q&A SOP note and the PMS Per‑stock Dashboard for every universe stock", "open": "/ratings/pms/", "more": [["Holdings list", "/ratings/pms/holdings.html"], ["APM PMS Q&A SOP note", "/ratings/pms/apm-pms-qa-sop.html"]]},
+    {"id": "repo", "name": "Reports & Memos Repository", "what": "The current Stock‑specific Investment Case A&J Memos with their companion pages, and the memos and notes in each stock's Bespoke Research + Micro-Memos section. Research reports are saved when you open them online", "open": "/repository/"},
+    {"id": "drivers", "name": "Industry and Sector Share Price Drivers Report", "what": "The reading page (84 Sector notes, 13 Industry overviews) and the Summary of Key Themes and Ratings", "open": "/landing/experiments/industry-and-sector-share-price-drivers-summary-of-key-themes-and-ratings.html", "more": [["Reading page", "/landing/experiments/industry-and-sector-share-price-drivers-reading-2026-10-09.html"]]},
+    {"id": "page", "name": "This page", "what": "The Offline Page itself", "hidden": true}
+  ],
+  "sources": [
+    {"repo": "vfhqi.github.io", "base": "/", "group": "page", "include": ["index.html", "offline-list.json"]},
+    {"repo": "master", "base": "/master/", "group": "md", "include": ["index.html", "valuation.html", "charts/", "valuation/", "multichart/"]},
+    {"repo": "ratings", "base": "/ratings/", "group": "pms", "include": ["pms/"], "exclude": ["pms/pms-charts/"]},
+    {"repo": "pms-universe", "base": "/pms-universe/", "group": "pms", "include": [""]},
+    {"repo": "ratings", "base": "/ratings/", "group": "repo", "include": ["canonical-ratings/", "ratings-snapshot.json"]},
+    {"repo": "repository", "base": "/repository/", "group": "repo",
+     "include": ["index.html", "reports-memos-repository.html", "404.html", "layers/", "fa-memo/", "ratings-map/", "ratings-hub/", "ratings-list/", "eleven-ratings/", "memo-tests/"],
+     "linked": {"page": "index.html", "folder": "memos/", "skip": "/report-(cf|bf|rk|er|lf|kqr|[0-9]+)(--[^/]*)?\\.html$"}},
+    {"repo": "landing", "base": "/landing/", "group": "drivers", "include": ["experiments/industry-and-sector-share-price-drivers-"]}
+  ]
+}
