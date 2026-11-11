@@ -1,10 +1,10 @@
-/* Viewforth offline helper. Version 2026-11-11.1 (Systems Architect).
+/* Viewforth offline helper. Version 2026-11-11.2 (Systems Architect).
    Covers every Viewforth site on vfhqi.github.io (scope "/").
    Online: always asks the website first, so pages are as live as before, and keeps a copy of what it gets.
    Offline (or no answer within a few seconds): serves the copy saved on this device.
    The Offline Page (/index.html) does the bulk saving; this file only answers page requests. */
 "use strict";
-const VERSION = "2026-11-11.1";
+const VERSION = "2026-11-11.2";
 const CACHE = "vf-offline-v1";
 const MODE_KEY = "/__offline__/mode.json";
 const BYPASS = "x-vf-offline-fetch";
@@ -62,13 +62,32 @@ async function offlineAnswer(req, key, u, same) {
   const hit = await fromCache(key, u, same);
   if (hit) return hit;
   if (req.mode === "navigate") {
-    if (same && u.pathname.startsWith("/repository/") && /-A(-and-|&|%26)J-Memo-\d{4}-\d\d-\d\d\.html$/.test(u.pathname)) {   // an old dated memo address: the Repository's own forwarder sends it to the current memo
-      const fwd = await (await caches.open(CACHE)).match(u.origin + "/repository/404.html");
-      if (fwd) return fwd;
-    }
+    const fwd = same && await currentMemo(u);   // an old dated memo address: open the saved current memo instead
+    if (fwd) return Response.redirect(fwd, 302);
     return notSaved(u);
   }
   return Response.error();
+}
+
+/* The Repository's 404.html holds the map from a stock and memo stage to its current memo file (built by memo_forward.py).
+   Offline, an old memo address goes to the current memo only when that memo is saved on the device. */
+async function currentMemo(u) {
+  let p; try { p = decodeURIComponent(u.pathname); } catch (e) { p = u.pathname; }
+  const m = p.match(/^\/repository\/memos\/([^\/]+)\/([^\/]+)$/);
+  if (!m || m[2].indexOf(m[1] + "-") !== 0) return null;
+  const r = m[2].slice(m[1].length + 1).match(/^([A-Za-z-]+?)-A(?:-and-|&)J-Memo-\d{4}-\d{2}-\d{2}\.html$/);
+  if (!r) return null;
+  const c = await caches.open(CACHE);
+  const page = await c.match(u.origin + "/repository/404.html");
+  if (!page) return null;
+  const key = JSON.stringify(m[1] + "|" + r[1].toLowerCase());
+  const text = await page.text();
+  const at = text.indexOf(key + ":");
+  if (at < 0) return null;
+  const target = JSON.parse(text.slice(at + key.length + 1).match(/^"(?:[^"\\]|\\.)*"/)[0]);
+  if (target === m[2]) return null;
+  const url = u.origin + "/repository/memos/" + encodeURIComponent(m[1]) + "/" + encodeURIComponent(target);
+  return (await c.match(url)) ? url : null;
 }
 
 function storable(res, same) {
