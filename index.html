@@ -248,11 +248,14 @@ async function runLocked(auto) {
     const { want, built, problems } = await plan();
     res.problems = problems; res.built = built;
     const c = await cache();
+    // the browser clears a site's saved files all together (never one by one), so the record of what was saved is
+    // trusted unless most of the saved files have gone
+    if (Object.keys(STATE.files).length && (await c.keys()).length < Object.keys(STATE.files).length / 2) STATE.files = {};
     const jobs = [];
     for (const [path, w] of want) {
       res.checked++;
       const have = STATE.files[path];
-      if (have && have.sha === w.sha && await c.match(ORIGIN + path)) { have.group = w.group; continue; }
+      if (have && have.sha === w.sha) { have.group = w.group; continue; }
       jobs.push([path, w]);
     }
     const total = jobs.length, totalBytes = jobs.reduce((a, j) => a + (j[1].size || 0), 0);
