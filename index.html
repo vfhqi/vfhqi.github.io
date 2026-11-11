@@ -132,7 +132,7 @@ ul.how li{margin:5px 0}
 const CACHE = "vf-offline-v1", STATE_KEY = "/__offline__/state.json", MODE_KEY = "/__offline__/mode.json";
 const API = "https://api.github.com/repos/vfhqi/";
 const BYPASS = { "x-vf-offline-fetch": "1" };
-const PARALLEL = 6, AUTO_HOURS = 20, PREVIEW_MIN = 30;
+const PARALLEL = 12, AUTO_HOURS = 20, PREVIEW_MIN = 30;
 const ORIGIN = location.origin;
 const $ = id => document.getElementById(id);
 let LIST = null, STATE = null, running = false, stopAsked = false, HELPER_VERSION = null;
@@ -183,7 +183,10 @@ async function plan() {
   const skip = new RegExp(LIST.skip_files);
   for (const src of LIST.sources) {
     if (!(src.repo in trees)) {
-      const r = await fetch(API + src.repo + "/git/trees/HEAD?recursive=1", { cache: "no-store" });
+      const ac = new AbortController(), t = setTimeout(() => ac.abort(), 90000);
+      const r = await fetch(API + src.repo + "/git/trees/HEAD?recursive=1", { cache: "no-store", signal: ac.signal })
+        .catch(e => { throw new Error("GitHub's list of files on " + src.repo + " could not be read (" + (e.name === "AbortError" ? "no answer" : e.message) + ")."); })
+        .finally(() => clearTimeout(t));
       if (r.status === 403 || r.status === 429) throw new Error("GitHub is limiting how often its file lists can be read from this network (60 an hour). Try again in an hour.");
       if (!r.ok) { trees[src.repo] = null; problems.push(src.repo + " (HTTP " + r.status + ")"); continue; }
       const j = await r.json();
@@ -218,10 +221,31 @@ async function plan() {
 }
 
 /* ---------- saving ---------- */
+/* One file, with an inactivity limit (a connection that goes quiet for STALL_S seconds is dropped and the file retried),
+   so one dead connection can never stall the whole save. */
+const STALL_S = 30, TRIES = 3, live = new Set();
+async function fetchOnce(path) {
+  const ac = new AbortController(); live.add(ac);
+  let timer; const arm = () => { clearTimeout(timer); timer = setTimeout(() => ac.abort(), STALL_S * 1000); };
+  try {
+    arm();
+    const r = await fetch(path, { cache: "no-store", headers: BYPASS, signal: ac.signal });
+    if (!r.ok) throw Object.assign(new Error("HTTP " + r.status), { final: r.status === 404 });
+    const reader = r.body.getReader(), parts = []; let n = 0;
+    for (;;) { arm(); const { done, value } = await reader.read(); if (done) break; parts.push(value); n += value.byteLength; }
+    const buf = new Uint8Array(n); let at = 0; for (const p of parts) { buf.set(p, at); at += p.byteLength; }
+    return { buf: buf.buffer, type: r.headers.get("content-type") || typeOf(path) };
+  } finally { clearTimeout(timer); live.delete(ac); }
+}
 async function download(path) {
-  const r = await fetch(path, { cache: "no-store", headers: BYPASS });
-  if (!r.ok) throw new Error("HTTP " + r.status);
-  return { buf: await r.arrayBuffer(), type: r.headers.get("content-type") || typeOf(path) };
+  for (let k = 1; ; k++) {
+    try { return await fetchOnce(path); }
+    catch (e) {
+      if (stopAsked) throw new Error("stopped");
+      if (e.final || k >= TRIES) throw new Error(e.name === "AbortError" ? "no answer for " + STALL_S + " seconds" : e.message);
+      await new Promise(r => setTimeout(r, 2000 * k));
+    }
+  }
 }
 function show(state) {
   $("progress").style.display = state ? "block" : "none";
@@ -267,7 +291,7 @@ async function run(auto) {
           if (sha !== w.sha) res.pending.push(path);
           res.fetched++; res.bytes += got.buf.byteLength;
         } catch (e) {
-          res.failed.push(path + " (" + e.message + ")");
+          if (!stopAsked) res.failed.push(path + " (" + e.message + ")");
         }
         done++;
         if (++sinceSave >= 60) { sinceSave = 0; await saveState(); }
@@ -320,7 +344,7 @@ async function refresh() {
       setHead("warn", "Partly saved: the first save did not finish.", "Tap “Finish saving” on Wi-Fi; it carries on from where it stopped.");
       $("go").textContent = "Finish saving";
     } else if (!STATE.updated) {
-      setHead("", "Nothing is saved on this device yet.", "Tap “Save for offline” on Wi-Fi. The first save is several hundred megabytes and takes a few minutes.");
+      setHead("", "Nothing is saved on this device yet.", "Tap “Save for offline” on Wi-Fi and leave this page open. The first save is about 6,400 files (about 800 MB on the device) and can take from a few minutes to an hour, depending on the connection. Later updates fetch only what changed.");
       $("go").textContent = "Save for offline";
     } else {
       const old = (Date.now() - new Date(STATE.updated)) / 36e5 > AUTO_HOURS;
@@ -391,7 +415,7 @@ async function helperStatus() {
   try { const r = await (await cache()).match(ORIGIN + MODE_KEY); if (r) mode = await r.json(); } catch (e) {}
   showPreview(mode);
   $("go").onclick = () => run(false);
-  $("stop").onclick = () => { stopAsked = true; $("stop").disabled = true; setTimeout(() => $("stop").disabled = false, 1500); };
+  $("stop").onclick = () => { stopAsked = true; live.forEach(ac => ac.abort()); $("stop").disabled = true; setTimeout(() => $("stop").disabled = false, 1500); };
   $("preview").onchange = e => setPreview(e.target.checked);
   let armed = false;
   $("wipe").onclick = async () => {
