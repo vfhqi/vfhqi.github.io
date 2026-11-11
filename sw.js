@@ -1,10 +1,10 @@
-/* Viewforth offline helper. Version 2026-11-11.2 (Systems Architect).
+/* Viewforth offline helper. Version 2026-11-11.3 (Systems Architect).
    Covers every Viewforth site on vfhqi.github.io (scope "/").
    Online: always asks the website first, so pages are as live as before, and keeps a copy of what it gets.
    Offline (or no answer within a few seconds): serves the copy saved on this device.
    The Offline Page (/index.html) does the bulk saving; this file only answers page requests. */
 "use strict";
-const VERSION = "2026-11-11.2";
+const VERSION = "2026-11-11.3";
 const CACHE = "vf-offline-v1";
 const MODE_KEY = "/__offline__/mode.json";
 const BYPASS = "x-vf-offline-fetch";
@@ -102,7 +102,8 @@ async function handle(e, req, u, same) {
   const offlinePageItself = same && ["/", "/index.html", "/offline-list.json"].includes(u.pathname);
   if (previewOn() && !offlinePageItself) return offlineAnswer(req, key, u, same);   // the switch itself stays reachable
   let stored = null;
-  const net = fetch(req).then(res => {
+  // the Offline Page itself always checks the website for a newer copy (the browser otherwise reuses its own copy for 10 minutes)
+  const net = (offlinePageItself ? fetch(u.href, { cache: "no-cache", credentials: "same-origin" }) : fetch(req)).then(res => {
     if (storable(res, same)) {
       const copy = res.clone();
       stored = caches.open(CACHE).then(c => c.put(key, copy)).catch(() => {});

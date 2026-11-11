@@ -130,7 +130,6 @@ ul.how li{margin:5px 0}
 <script>
 "use strict";
 const CACHE = "vf-offline-v1", STATE_KEY = "/__offline__/state.json", MODE_KEY = "/__offline__/mode.json";
-const API = "https://api.github.com/repos/vfhqi/";
 const BYPASS = { "x-vf-offline-fetch": "1" };
 const PARALLEL = 12, AUTO_HOURS = 20, PREVIEW_MIN = 30;
 const ORIGIN = location.origin;
@@ -171,53 +170,23 @@ async function saveState() {
 
 /* ---------- what should be saved ---------- */
 async function getList() {
-  const r = await fetch("/offline-list.json", { cache: "no-store", headers: BYPASS }).catch(() => null);
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), 8000);
+  const r = await fetch("/offline-list.json", { cache: "no-store", headers: BYPASS, signal: ac.signal }).catch(() => null);
+  clearTimeout(t);
   if (r && r.ok) return r.json();
   const saved = await (await cache()).match(ORIGIN + "/offline-list.json");   // offline: the saved list
   return saved ? saved.json() : null;
 }
+/* The file list (offline-files.json) is built on the PC every few hours with GitHub's own file ids and sizes,
+   from the rules in offline-list.json. */
 async function plan() {
-  const trees = {}, problems = [];
-  const want = new Map();          // path -> {sha,size,group}
-  const prefetched = new Map();    // path -> {buf,type}
-  const skip = new RegExp(LIST.skip_files);
-  for (const src of LIST.sources) {
-    if (!(src.repo in trees)) {
-      const ac = new AbortController(), t = setTimeout(() => ac.abort(), 90000);
-      const r = await fetch(API + src.repo + "/git/trees/HEAD?recursive=1", { cache: "no-store", signal: ac.signal })
-        .catch(e => { throw new Error("GitHub's list of files on " + src.repo + " could not be read (" + (e.name === "AbortError" ? "no answer" : e.message) + ")."); })
-        .finally(() => clearTimeout(t));
-      if (r.status === 403 || r.status === 429) throw new Error("GitHub is limiting how often its file lists can be read from this network (60 an hour). Try again in an hour.");
-      if (!r.ok) { trees[src.repo] = null; problems.push(src.repo + " (HTTP " + r.status + ")"); continue; }
-      const j = await r.json();
-      if (j.truncated) problems.push(src.repo + " (file list cut short by GitHub)");
-      trees[src.repo] = new Map((j.tree || []).filter(e => e.type === "blob").map(e => [e.path, e]));
-    }
-    const tree = trees[src.repo];
-    if (!tree) continue;
-    const add = (p, e) => { if (!skip.test(p)) want.set(src.base + p, { sha: e.sha, size: e.size, group: src.group }); };
-    for (const [p, e] of tree) {
-      if (!(src.include || []).some(pre => p === pre || p.startsWith(pre))) continue;
-      if ((src.exclude || []).some(pre => p.startsWith(pre))) continue;
-      add(p, e);
-    }
-    if (src.linked) {                // the files a page links to, e.g. the Repository's current memos
-      const lp = src.base + src.linked.page;
-      const got = await download(lp).catch(() => null);
-      if (!got) { problems.push(lp + " (could not be read)"); continue; }
-      prefetched.set(lp, got);
-      const text = new TextDecoder().decode(got.buf).replace(/&amp;/g, "&");
-      const sk = new RegExp(src.linked.skip);
-      const seen = new Set();
-      for (const m of text.matchAll(/[A-Za-z0-9_.&\-]+\/[A-Za-z0-9_.&\-]+\.html/g)) {
-        const p = src.linked.folder + m[0];
-        if (seen.has(p)) continue; seen.add(p);
-        const e = tree.get(p);
-        if (e && !sk.test("/" + p)) add(p, e);
-      }
-    }
-  }
-  return { want, prefetched, problems };
+  show({ total: 0, done: 0, text: "Reading the list of files to save…" });
+  let got;
+  try { got = await download("/offline-files.json"); }
+  catch (e) { throw new Error("the list of files to save could not be read (" + e.message + ")"); }
+  const lst = JSON.parse(new TextDecoder().decode(got.buf));
+  const want = new Map(Object.entries(lst.files).map(([p, f]) => [p, { sha: f[0], size: f[1], group: f[2] }]));
+  return { want, built: lst.built, problems: lst.problems || [] };
 }
 
 /* ---------- saving ---------- */
@@ -261,12 +230,12 @@ async function run(auto) {
   const t0 = Date.now();
   show({ total: 0, done: 0, text: "Reading the list of files on each site…" });
   setHead("warn", auto ? "Updating the saved copy (it was more than a day old)…" : "Updating the saved copy…", "Keep this page open until it finishes.");
-  let res = { checked: 0, fetched: 0, bytes: 0, failed: [], pending: [], removed: 0, problems: [] };
+  let res = { checked: 0, fetched: 0, bytes: 0, failed: [], newer: [], removed: 0, problems: [], built: null };
   try {
     LIST = await getList();
     if (!LIST) throw new Error("The list of what to save could not be read.");
-    const { want, prefetched, problems } = await plan();
-    res.problems = problems;
+    const { want, built, problems } = await plan();
+    res.problems = problems; res.built = built;
     const c = await cache();
     const jobs = [];
     for (const [path, w] of want) {
@@ -283,12 +252,11 @@ async function run(auto) {
       while (i < jobs.length && !stopAsked) {
         const [path, w] = jobs[i++];
         try {
-          const got = prefetched.get(path) || await download(path);
-          const sha = await gitSha(got.buf);
+          const got = await download(path);
           await c.put(ORIGIN + path, new Response(got.buf, { headers: { "content-type": got.type, "x-vf-saved": new Date().toISOString() } }));
-          // a mismatch means the website was still publishing a newer or older copy: keep it, try again next time
-          STATE.files[path] = { sha: sha === w.sha ? w.sha : "retry", size: got.buf.byteLength, group: w.group };
-          if (sha !== w.sha) res.pending.push(path);
+          // a different file id means the website already has a newer copy than the list: that newer copy is what is saved
+          if (await gitSha(got.buf) !== w.sha) res.newer.push(path);
+          STATE.files[path] = { sha: w.sha, size: got.buf.byteLength, group: w.group };
           res.fetched++; res.bytes += got.buf.byteLength;
         } catch (e) {
           if (!stopAsked) res.failed.push(path + " (" + e.message + ")");
@@ -307,7 +275,7 @@ async function run(auto) {
     const complete = !stopAsked && !res.failed.length;
     if (complete) STATE.updated = new Date().toISOString();
     STATE.last = { at: new Date().toISOString(), seconds: Math.round((Date.now() - t0) / 1000), checked: res.checked, fetched: res.fetched,
-                   bytes: res.bytes, failed: res.failed.length, pending: res.pending.length, removed: res.removed, stopped: stopAsked, problems: res.problems };
+                   bytes: res.bytes, failed: res.failed.length, newer: res.newer.length, removed: res.removed, stopped: stopAsked, problems: res.problems, list_built: res.built };
     await saveState();
     if (navigator.storage && navigator.storage.persist) { try { await navigator.storage.persist(); } catch (e) {} }
   } catch (e) {
@@ -319,8 +287,8 @@ async function run(auto) {
   const L = [];
   if (res.error) L.push("The update did not finish: " + res.error);
   if (res.failed.length) L.push(num(res.failed.length) + (res.failed.length === 1 ? " file" : " files") + " could not be saved this time, for example " + res.failed.slice(0, 2).join("; ") + ". The next update tries them again.");
-  if (res.pending.length) L.push(num(res.pending.length) + (res.pending.length === 1 ? " file was" : " files were") + " being re-published on the website while saving; " + (res.pending.length === 1 ? "it is" : "they are") + " saved and will be checked again next time.");
-  if (res.problems.length) L.push("Could not read: " + res.problems.join("; ") + ".");
+  if (res.newer.length) L.push(num(res.newer.length) + (res.newer.length === 1 ? " file had" : " files had") + " changed on the website since the list of files was built" + (res.built ? " (" + when(res.built) + ")" : "") + "; the newest " + (res.newer.length === 1 ? "copy is" : "copies are") + " saved.");
+  if (res.problems.length) L.push("The list of files could not include: " + res.problems.join("; ") + ".");
   $("log").textContent = L.join(" ");
 }
 
