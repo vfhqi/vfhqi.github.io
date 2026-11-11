@@ -115,7 +115,7 @@ ul.how li{margin:5px 0}
     <h2>How to use it</h2>
     <ul class="how">
       <li><b>Before you go offline:</b> open this page on Wi-Fi. It updates by itself when the saved copy is more than a day old; leave the page open until it says it is up to date.</li>
-      <li><b>When offline:</b> open your usual bookmarks or the links above. Pages you have not saved show a short note with a link back here.</li>
+      <li><b>When offline:</b> open your usual bookmarks or the links above. Pages you have not saved show a short note with a link back here. On a very slow connection, a page that gets no answer from the website within 12 seconds is shown from the saved copy; reload it later for the live version.</li>
       <li><b>On the iPad:</b> use ordinary Safari or Chrome tabs, not a Home Screen icon, and open this page at least once a week, or the iPad may clear the saved copy.</li>
       <li><b>Research reports</b> are not saved in bulk; any page you open online is kept for offline reading as well.</li>
     </ul>
@@ -225,12 +225,23 @@ function show(state) {
 }
 async function run(auto) {
   if (running) return;
+  running = true; $("go").disabled = true;                 // at once, so a second tap does nothing
+  setHead("warn", "Updating the saved copy…", "Keep this page open until it finishes.");
+  if (navigator.locks) {          // one save at a time, even with the page open in two tabs
+    return navigator.locks.request("vf-offline-save", { ifAvailable: true }, async lock => {
+      if (!lock) { running = false; $("go").disabled = false; await refresh(); $("log").textContent = "This page is already saving in another tab or window."; return; }
+      await runLocked(auto);
+    });
+  }
+  return runLocked(auto);
+}
+async function runLocked(auto) {
   running = true; stopAsked = false;
   $("go").disabled = true; $("wipe").disabled = true; $("preview").disabled = true; $("stop").style.display = ""; $("log").textContent = "";
   const t0 = Date.now();
   show({ total: 0, done: 0, text: "Reading the list of files on each site…" });
   setHead("warn", auto ? "Updating the saved copy (it was more than a day old)…" : "Updating the saved copy…", "Keep this page open until it finishes.");
-  let res = { checked: 0, fetched: 0, bytes: 0, failed: [], newer: [], removed: 0, problems: [], built: null };
+  let res = { checked: 0, fetched: 0, bytes: 0, failed: [], newer: [], missing: [], removed: 0, problems: [], built: null };
   try {
     LIST = await getList();
     if (!LIST) throw new Error("The list of what to save could not be read.");
@@ -259,7 +270,9 @@ async function run(auto) {
           STATE.files[path] = { sha: w.sha, size: got.buf.byteLength, group: w.group };
           res.fetched++; res.bytes += got.buf.byteLength;
         } catch (e) {
-          if (!stopAsked) res.failed.push(path + " (" + e.message + ")");
+          if (stopAsked) { /* not a failure */ }
+          else if (e.message === "HTTP 404") { res.missing.push(path); delete STATE.files[path]; }   // removed from the site, or not yet published
+          else res.failed.push(path + " (" + e.message + ")");
         }
         done++;
         if (++sinceSave >= 60) { sinceSave = 0; await saveState(); }
@@ -267,6 +280,7 @@ async function run(auto) {
       }
     };
     await Promise.all(Array.from({ length: PARALLEL }, worker));
+    if (!stopAsked && LIST.also_save) await saveAlso(LIST.also_save);
     if (!stopAsked) {               // files no longer on the list
       for (const path of Object.keys(STATE.files)) {
         if (!want.has(path)) { await c.delete(ORIGIN + path); delete STATE.files[path]; res.removed++; }
@@ -287,9 +301,21 @@ async function run(auto) {
   const L = [];
   if (res.error) L.push("The update did not finish: " + res.error);
   if (res.failed.length) L.push(num(res.failed.length) + (res.failed.length === 1 ? " file" : " files") + " could not be saved this time, for example " + res.failed.slice(0, 2).join("; ") + ". The next update tries them again.");
+  if (res.missing.length) L.push(num(res.missing.length) + (res.missing.length === 1 ? " file on the list was" : " files on the list were") + " not on the website (removed or not yet published) and " + (res.missing.length === 1 ? "was" : "were") + " skipped.");
   if (res.newer.length) L.push(num(res.newer.length) + (res.newer.length === 1 ? " file had" : " files had") + " changed on the website since the list of files was built" + (res.built ? " (" + when(res.built) + ")" : "") + "; the newest " + (res.newer.length === 1 ? "copy is" : "copies are") + " saved.");
   if (res.problems.length) L.push("The list of files could not include: " + res.problems.join("; ") + ".");
   $("log").textContent = L.join(" ");
+}
+
+/* Files from other sites that the pages use (fonts): fetched through the offline helper, which keeps them. */
+async function saveAlso(urls) {
+  for (const u of urls) {
+    try {
+      const css = await (await fetch(u, { mode: "cors" })).text();
+      const fonts = [...new Set([...css.matchAll(/url\((https:\/\/[^)]+)\)/g)].map(m => m[1]))];
+      await Promise.all(fonts.map(f => fetch(f, { mode: "cors" }).then(r => r.arrayBuffer()).catch(() => null)));
+    } catch (e) { /* fonts are a nicety: the pages fall back to the device's own fonts */ }
+  }
 }
 
 /* ---------- page state ---------- */

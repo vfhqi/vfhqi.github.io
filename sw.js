@@ -1,14 +1,14 @@
-/* Viewforth offline helper. Version 2026-11-11.3 (Systems Architect).
+/* Viewforth offline helper. Version 2026-11-11.4 (Systems Architect).
    Covers every Viewforth site on vfhqi.github.io (scope "/").
    Online: always asks the website first, so pages are as live as before, and keeps a copy of what it gets.
-   Offline (or no answer within a few seconds): serves the copy saved on this device.
+   Offline (or no answer within 12 seconds): serves the copy saved on this device.
    The Offline Page (/index.html) does the bulk saving; this file only answers page requests. */
 "use strict";
-const VERSION = "2026-11-11.3";
+const VERSION = "2026-11-11.4";
 const CACHE = "vf-offline-v1";
 const MODE_KEY = "/__offline__/mode.json";
 const BYPASS = "x-vf-offline-fetch";
-const WAIT_MS = 6000;                 // no first answer from the website within this time: use the saved copy
+const WAIT_MS = 12000;                // no first answer from the website within this time: use the saved copy (a stalled connection)
 const FONT_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com"];
 
 let preview = { on: false, until: 0 }; // "Browse as if offline" switch, set by the Offline Page
